@@ -30,6 +30,7 @@ import Control.Exception      (SomeException, catch, throwIO)
 import Control.Monad          (unless, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader   (ask, runReaderT)
+import Control.Monad.Trans.Class (lift)
 import Data.ByteString        (ByteString)
 import Data.Conduit           (Producer, Conduit, Consumer, (=$=), ($=), (=$), await, awaitForever, toProducer, yield)
 import Data.Conduit.TMChan    (closeTBMChan, isEmptyTBMChan, sourceTBMChan, writeTBMChan)
@@ -56,7 +57,7 @@ import Network.IRC.Client.Lens
 
 -- | Connect to a server using the supplied connection function.
 connectInternal
-  :: (IO () -> Consumer (Either ByteString IrcEvent) IO () -> Producer IO IrcMessage -> IO ())
+  :: (IO () -> Consumer (Either ByteString IrcEvent) (IRC s) () -> Producer (IRC s) IrcMessage -> IRC s ())
   -- ^ Function to start the network conduits.
   -> IRC s ()
   -- ^ Connect handler
@@ -101,7 +102,7 @@ runner = do
   let thePass = get password cconf
 
   -- Initialise the IRC session
-  let initialise = flip runReaderT state . runIRC $ do
+  let initialise = do
         liftIO . atomically $ writeTVar (_connectionState state) Connected
         mapM_ (\p -> sendBS $ rawMessage "PASS" [encodeUtf8 p]) thePass
         sendBS $ rawMessage "USER" [encodeUtf8 theUser, "-", "-", encodeUtf8 theReal]
@@ -118,7 +119,7 @@ runner = do
                           $= antiflood
                           $= logConduit (_logfunc cconf FromClient . toByteString)
   let sink   = forgetful =$= logConduit (_logfunc cconf FromServer . _raw)
-                         =$ eventSink lastReceived state
+                         =$ eventSink lastReceived
 
   -- Fork a thread to disconnect if the timeout elapses.
   mainTId <- liftIO myThreadId
@@ -130,18 +131,27 @@ runner = do
         if diffUTCTime now prior >= time
           then throwTo mainTId Timeout
           else threadDelay delay >> timeoutThread
+  -- consider using async (or lifted-async) for these things…
   timeoutTId <- liftIO (forkIO timeoutThread)
 
   -- Start the client.
-  (exc :: Maybe SomeException) <- liftIO $ catch
-    (_func cconf initialise sink source >> killThread timeoutTId >> pure Nothing)
-    (pure . Just)
+
+  -- FUDGE: have a look at
+  -- http://hackage.haskell.org/package/lifted-base-0.2.3.8/docs/Control-Exception-Lifted.html
+{-   (exc :: Maybe SomeException) <- catch -}
+{-     ( ) -}
+{-     (pure . Just) -}
+
+  -- FUDGE: exceptions? what exceptions?
+  _func cconf initialise sink source
+  liftIO (killThread timeoutTId)
 
   disconnect
   _ondisconnect cconf
 
+  -- this is not a great way to rethrow the exception…
   -- If the connection terminated due to an exception, rethrow it.
-  liftIO $ maybe (pure ()) throwIO exc
+{-   liftIO $ maybe (pure ()) throwIO exc -}
 
 -- | Forget failed decodings.
 forgetful :: Monad m => Conduit (Either a b) m b
@@ -151,19 +161,27 @@ forgetful = awaitForever go where
 
 -- | Block on receiving a message and invoke all matching handlers
 -- concurrently.
-eventSink :: MonadIO m => IORef UTCTime -> IRCState s -> Consumer IrcEvent m ()
-eventSink lastReceived ircstate = go where
+eventSink :: IORef UTCTime -> Consumer IrcEvent (IRC s) ()
+eventSink lastReceived = go where
   go = await >>= maybe (return ()) (\event -> do
+    ircstate <- lift ask -- FUDGE
     -- Record the current time.
     now <- liftIO getCurrentTime
     liftIO $ writeIORef lastReceived now
 
     -- Handle the event.
     let event' = decodeUtf8 <$> event
-    ignored <- isIgnored ircstate event'
+    ignored <- lift $ isIgnored event'
     unless ignored $ do
       -- FIXME: fudge for now
       hs <- getHandlersFor event' . view handlers <$> liftIO (atomically $ readTVar $ _instanceConfig ircstate)
+      hs <- lift $ getHandlersFor event' <$> lift snapshot handlers
+      -- maybe this instead? http://hackage.haskell.org/package/lifted-base/docs/Control-Concurrent-Lifted.html
+      -- but I actually have a bug report relating to this forking:
+      -- if a handler calls 'disconnect', the @unless disconnected go@ below
+      -- will continue on for one more iteration… maybe use the async
+      -- package and wait for all handlers to finish? Handlers that need to
+      -- keep running in the background can go fork themselves.
       liftIO $ mapM_ (\h -> forkIO $ runReaderT (runIRC $ h event') ircstate) hs
 
     -- If disconnected, do not loop.
@@ -171,11 +189,9 @@ eventSink lastReceived ircstate = go where
     unless disconnected go)
 
 -- | Check if an event is ignored or not.
-isIgnored :: MonadIO m => IRCState s -> Event Text -> m Bool
-isIgnored ircstate ev = do
-  iconf <- liftIO . atomically . readTVar . _instanceConfig $ ircstate
-  let ignoreList = _ignore iconf
-
+isIgnored :: Event Text -> IRC s Bool
+isIgnored ev = do
+  ignoreList <- snapshot ignore
   return $
     case _source ev of
       User      n ->  (n, Nothing) `elem` ignoreList
