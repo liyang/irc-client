@@ -162,7 +162,8 @@ eventSink lastReceived ircstate = go where
     let event' = decodeUtf8 <$> event
     ignored <- isIgnored ircstate event'
     unless ignored $ do
-      hs <- getHandlersFor event' . get handlers <$> snapshot instanceConfig ircstate
+      -- FIXME: fudge for now
+      hs <- getHandlersFor event' . view handlers <$> liftIO (atomically $ readTVar $ _instanceConfig ircstate)
       liftIO $ mapM_ (\h -> forkIO $ runReaderT (runIRC $ h event') ircstate) hs
 
     -- If disconnected, do not loop.
@@ -291,3 +292,31 @@ timeoutBlock dt check = liftIO $ do
         cond <- check
         when (now < finish && not cond) wait
   wait
+
+-- FIXME: you (mostly) only seem to be using 'snapshot' in this form…
+-- Maybe this is a better home than .Internal.Lens?
+-- | Atomically snapshot some InstanceConfig state.
+snapshot :: Getting a (InstanceConfig s) a -> IRC s a
+snapshot l = do
+    tv <- view instanceConfig
+    liftIO $ atomically $ view l <$> readTVar tv
+
+-- or slightly more generally
+{-
+snapshot' :: Getting (TVar cfg) (IRCState s) (TVar cfg) -> Getting a cfg a -> IRC s a
+snapshot' cfg l = do
+    tv <- view cfg
+    liftIO $ atomically $ view l <$> readTVar tv
+-}
+
+-- this doesn't seem to be used anywhere?
+{-
+-- | Atomically snapshot and modify some shared state.
+snapshotModify :: MonadIO m => Lens' s (TVar a) -> (a -> STM (a, b)) -> s -> m b
+snapshotModify lens f s = liftIO . atomically $ do
+  let avar = get lens s
+  a <- readTVar avar
+  (a', b) <- f a
+  writeTVar avar a'
+  pure b
+-}

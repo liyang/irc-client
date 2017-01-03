@@ -30,8 +30,6 @@ module Network.IRC.Client.Utils
   , snapConnState
 
     -- * Lenses
-  , snapshot
-  , snapshotModify
   , get
   , set
   , modify

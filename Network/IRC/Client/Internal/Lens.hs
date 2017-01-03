@@ -16,6 +16,7 @@ import Control.Applicative (Const(..))
 import Control.Arrow (Kleisli(..))
 import Control.Concurrent.STM (TVar, STM, atomically, readTVar, writeTVar)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.Functor.Contravariant (Contravariant)
 import Data.Functor.Identity (Identity(..))
 import Data.Profunctor (Choice)
@@ -53,31 +54,30 @@ is k = either (const True) (const False . runIdentity)
 -------------------------------------------------------------------------------
 -- * Utilities
 
+-- Also it'd be nice to use the standard lens names for various things to
+-- make it easier on other people working on irc-client.
+
 -- | Get a value from a lens.
 get :: Getting a s a -> s -> a
 get lens = getConst . lens Const
+-- FIXME: this is (almost) 'Control.Lens.Getter.view' or '^.'
+-- also clashes with MonadState's get/put
+
+-- view :: Getting a s a -> s -> a -- instance MonadReader ((->) s)
+view :: MonadReader s m => Getting a s a -> m a
+view l = asks (getConst . l Const)
 
 -- | Set a value in a lens.
 set :: Lens' s a -> a -> s -> s
-set lens a = runIdentity . lens (\_ -> Identity a)
+set l a = runIdentity . l (\_ -> Identity a)
+-- also called '.~'
+-- FIXME: arg name clashes with 'Control.Lens.Lens.lens'; usually just 'l'
 
 -- | Modify a value in a lens.
 modify :: Lens' s a -> (a -> a) -> s -> s
-modify lens f s = let a = get lens s in set lens (f a) s
-
-
--------------------------------------------------------------------------------
--- ** STM
-
--- | Atomically snapshot some shared state.
-snapshot :: MonadIO m => Getting (TVar a) s (TVar a) -> s -> m a
-snapshot lens = liftIO . atomically . readTVar . get lens
-
--- | Atomically snapshot and modify some shared state.
-snapshotModify :: MonadIO m => Lens' s (TVar a) -> (a -> STM (a, b)) -> s -> m b
-snapshotModify lens f s = liftIO . atomically $ do
-  let avar = get lens s
-  a <- readTVar avar
-  (a', b) <- f a
-  writeTVar avar a'
-  pure b
+{- modify lens f s = let a = get lens s in set lens (f a) s -}
+-- FIXME: this is 'Control.Lens.Setter.over', or '%~'
+-- name also clashes with MonadState
+over :: Lens' s a -> (a -> a) -> s -> s
+over l f = runIdentity . l (Identity . f)
+modify = over

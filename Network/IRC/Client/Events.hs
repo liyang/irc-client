@@ -140,9 +140,7 @@ defaultEventHandlers =
 
 -- | The default connect handler: set the nick.
 defaultOnConnect :: IRC s ()
-defaultOnConnect = do
-  iconf <- snapshot instanceConfig =<< getIrcState
-  send . Nick $ get nick iconf
+defaultOnConnect = send . Nick =<< snapshot nick
 
 -- | The default disconnect handler: do nothing. You might want to
 -- override this with one which reconnects.
@@ -170,9 +168,7 @@ ctcpPingHandler ev = case (_source ev, _message ev) of
 -- | Respond to CTCP @VERSION@ requests with the version string.
 ctcpVersionHandler :: Event Text -> IRC s ()
 ctcpVersionHandler ev = case _source ev of
-  User n -> do
-    ver <- get version <$> (snapshot instanceConfig =<< getIrcState)
-    send $ ctcpReply n "VERSION" [ver]
+  User n -> send . ctcpReply n "VERSION" . (:[]) =<< snapshot version
   _ -> pure ()
 
 -- | Respond to CTCP @TIME@ requests with the system time.
@@ -199,9 +195,7 @@ welcomeNick ev = case _message ev of
 -- | Join default channels upon welcome (numeric reply 001). If sent earlier,
 -- the server might reject the JOIN attempts.
 joinOnWelcome :: Event Text -> IRC s ()
-joinOnWelcome _ = do
-  iconf <- snapshot instanceConfig =<< getIrcState
-  mapM_ (send . Join) $ get channels iconf
+joinOnWelcome _ = mapM_ (send . Join) =<< snapshot channels
 
 -- | Mangle the nick if there's a collision (numeric replies 432, 433,
 -- and 436) when we set it
@@ -213,7 +207,7 @@ nickMangler ev = case _message ev of
     _ -> pure ()
   where
     go f (_:srvNick:_) = do
-      theNick <- get nick <$> (snapshot instanceConfig =<< getIrcState)
+      theNick <- snapshot nick
 
       -- If the length of our nick and the server's idea of our nick
       -- differ, it was truncated - so calculate the allowable length.
