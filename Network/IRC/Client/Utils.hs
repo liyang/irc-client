@@ -32,9 +32,6 @@ module Network.IRC.Client.Utils
     -- * Lenses
   , snapshot
   , snapshotModify
-  , get
-  , set
-  , modify
   ) where
 
 import Control.Concurrent.STM (TVar, STM, atomically, modifyTVar)
@@ -55,7 +52,7 @@ import Network.IRC.Client.Lens
 -- collisions, that's up to the event handlers.
 setNick :: Text -> IRC s ()
 setNick new = do
-  tvarI <- get instanceConfig <$> getIRCState
+  tvarI <- view instanceConfig <$> getIRCState
   liftIO . atomically $
     modifyTVar tvarI (set nick new)
   send $ Nick new
@@ -68,7 +65,7 @@ setNick new = do
 -- part the channel.
 leaveChannel :: Text -> Maybe Text -> IRC s ()
 leaveChannel chan reason = do
-  tvarI <- get instanceConfig <$> getIRCState
+  tvarI <- view instanceConfig <$> getIRCState
   liftIO . atomically $ delChan tvarI chan
   send $ Part chan reason
 
@@ -76,8 +73,7 @@ leaveChannel chan reason = do
 -- careful not to let the channel list get out of sync with the
 -- real-world state if you use it for anything!)
 delChan :: TVar (InstanceConfig s) -> Text -> STM ()
-delChan tvarI chan =
-  modifyTVar tvarI (modify channels (filter (/=chan)))
+delChan tvarI chan = modifyTVar tvarI (over channels $ filter (/=chan))
 
 
 -------------------------------------------------------------------------------
@@ -86,9 +82,8 @@ delChan tvarI chan =
 -- | Add an event handler
 addHandler :: EventHandler s -> IRC s ()
 addHandler handler = do
-  tvarI <- get instanceConfig <$> getIRCState
-  liftIO . atomically $
-    modifyTVar tvarI (modify handlers (handler:))
+  tvarI <- view instanceConfig <$> getIRCState
+  liftIO . atomically . modifyTVar tvarI $ over handlers (handler:)
 
 -- | Send a message to the source of an event.
 replyTo :: Text{- ^ 'ChannelName' or 'NickName' -} -> Text -> IRC s ()

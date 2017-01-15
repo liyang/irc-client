@@ -96,9 +96,9 @@ runner = do
   let cconf = _connectionConfig state
 
   -- Set the real- and user-name
-  let theUser = get username cconf
-  let theReal = get realname cconf
-  let thePass = get password cconf
+  let theUser = view username cconf
+  let theReal = view realname cconf
+  let thePass = view password cconf
 
   -- Initialise the IRC session
   let initialise = runIRCAction state $ do
@@ -162,7 +162,7 @@ eventSink lastReceived ircstate = go where
     ignored <- isIgnored ircstate event'
     unless ignored . liftIO $ do
       iconf <- snapshot instanceConfig ircstate
-      forM_ (get handlers iconf) $ \(EventHandler matcher handler) ->
+      forM_ (view handlers iconf) $ \(EventHandler matcher handler) ->
         maybe (pure ())
               (void . forkIO . runIRCAction ircstate . handler (_source event'))
               (matcher event')
