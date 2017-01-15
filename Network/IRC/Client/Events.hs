@@ -111,8 +111,8 @@ matchCTCP verb ev = case _message ev of
 --    - 436 (ERR_NICKCOLLISION), sent after trying to change to a nick
 --      in use on another server.
 --
--- See Section 5 of @<https://tools.ietf.org/html/rfc2812#section-5
--- RFC 2812>@ for a complete list.
+-- See Section 5 of @<https://tools.ietf.org/html/rfc2812#section-5 RFC 2812>@
+-- for a complete list.
 --
 -- > matchNumeric 001 "001 :Welcome to irc.example.com" ==> True
 -- > matchNumeric 332 "332 :#haskell: We like Haskell"  ==> True
