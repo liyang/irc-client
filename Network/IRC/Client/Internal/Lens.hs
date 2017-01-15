@@ -18,8 +18,8 @@ module Network.IRC.Client.Internal.Lens where
 import Control.Applicative (Const(..))
 import Control.Concurrent.STM (TVar, STM, atomically, readTVar, writeTVar)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Functor.Contravariant (Contravariant)
 import Control.Monad.Reader.Class (MonadReader, asks)
+import Data.Functor.Contravariant (Contravariant(contramap))
 import Data.Functor.Identity (Identity(..))
 import Data.Monoid (First(..))
 import Data.Profunctor (Choice)
@@ -54,6 +54,11 @@ type Prism' s a = Prism s s a a
 {-# INLINE view #-}
 view :: MonadReader s m => Getting a s a -> m a
 view l = asks (getConst . l Const)
+
+-- | Build a getter from an arbitrary Haskell function.
+{-# INLINE to #-}
+to :: (s -> a) -> Getter s a
+to k f = contramap k . f . k
 
 -- | Map the target of a lens or prism to a monoid, and combine the results.
 {-# INLINE foldMapOf #-}

@@ -281,8 +281,8 @@ nickMangler = EventHandler (\ev -> matcher 432 fresh ev <|> matcher 433 mangle e
                           ]
 
     -- Attempt to transform some text by the substitutions.
-    transform ((from, to):trs) txt = case breakOn' from txt of
-      Just (before, after) -> Just $ before <> to <> after
+    transform ((src, dst):trs) txt = case breakOn' src txt of
+      Just (before, after) -> Just $ before <> dst <> after
       _ -> transform trs txt
     transform [] _ = Nothing
 
