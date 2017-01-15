@@ -19,6 +19,7 @@ import Control.Applicative (Const(..))
 import Control.Concurrent.STM (TVar, STM, atomically, readTVar, writeTVar)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Functor.Contravariant (Contravariant)
+import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.Functor.Identity (Identity(..))
 import Data.Monoid (First(..))
 import Data.Profunctor (Choice)
@@ -49,25 +50,30 @@ type Prism' s a = Prism s s a a
 -------------------------------------------------------------------------------
 -- * Utilities
 
--- | Get a value from a lens.
+-- | Get the value pointed to by a getter or lens.
 {-# INLINE view #-}
-view :: Getting a s a -> s -> a
-view l = getConst . l Const
+view :: MonadReader s m => Getting a s a -> m a
+view l = asks (getConst . l Const)
+
+-- | Map the target of a lens or prism to a monoid, and combine the results.
+{-# INLINE foldMapOf #-}
+foldMapOf :: Getting r s a -> (a -> r) -> s -> r
+foldMapOf l f = getConst . l (Const . f)
 
 -- | Set a value in a lens.
 {-# INLINE set #-}
-set :: Lens' s a -> a -> s -> s
-set l a = runIdentity . l (\_ -> Identity a)
+set :: Lens s t a b -> b -> s -> t
+set l b = runIdentity . l (\_ -> Identity b)
 
 -- | Modify a value in a lens.
 {-# INLINE over #-}
-over :: Lens' s a -> (a -> a) -> s -> s
-over l f s = let a = view l s in set l (f a) s
+over :: Lens s t a b -> (a -> b) -> s -> t
+over l f = runIdentity . l (Identity . f)
 
 -- | Read a value from a prism.
 {-# INLINE preview #-}
-preview :: Prism' s a -> s -> Maybe a
-preview lens = getFirst . getConst . lens (Const . First . Just)
+preview :: MonadReader s m => Getting (First a) s a -> m (Maybe a)
+preview l = asks (getFirst . foldMapOf l (First . Just))
 
 
 -------------------------------------------------------------------------------
