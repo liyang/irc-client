@@ -17,11 +17,10 @@ module Network.IRC.Client.Utils
 
     -- * Events
   , addHandler
-  , reply
   , replyTo
 
     -- * CTCPs
-  , ctcp
+  , ctcpTo
   , ctcpReply
 
     -- * Connection state
@@ -42,7 +41,7 @@ import Control.Concurrent.STM (TVar, STM, atomically, modifyTVar)
 import Control.Monad.IO.Class (liftIO)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Network.IRC.Conduit (Event(..), Message(..), Source(..))
+import Network.IRC.Conduit (Message(..))
 import Network.IRC.CTCP (toCTCP)
 
 import Network.IRC.Client.Internal
@@ -92,22 +91,16 @@ addHandler handler = do
     modifyTVar tvarI (modify handlers (handler:))
 
 -- | Send a message to the source of an event.
-reply :: Event Text -> Text -> IRC s ()
-reply = replyTo . _source
-
--- | Send a message to the source of an event.
-replyTo :: Source Text -> Text -> IRC s ()
-replyTo (Channel c _) = mapM_ (send . Privmsg c . Right) . T.lines
-replyTo (User n)      = mapM_ (send . Privmsg n . Right) . T.lines
-replyTo _ = const $ pure ()
+replyTo :: Text{- ^ 'ChannelName' or 'NickName' -} -> Text -> IRC s ()
+replyTo n = mapM_ (send . Privmsg n . Right) . T.lines
 
 
 -------------------------------------------------------------------------------
 -- CTCPs
 
 -- | Construct a @PRIVMSG@ containing a CTCP
-ctcp :: Text -> Text -> [Text] -> Message Text
-ctcp t command args = Privmsg t . Left $ toCTCP command args
+ctcpTo :: Text{- ^ 'ChannelName' or 'NickName' -} -> Text -> [Text] -> Message Text
+ctcpTo n command args = Privmsg n . Left $ toCTCP command args
 
 -- | Construct a @NOTICE@ containing a CTCP
 ctcpReply :: Text -> Text -> [Text] -> Message Text
