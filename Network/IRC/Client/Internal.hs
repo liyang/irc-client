@@ -34,6 +34,7 @@ import Control.Monad.Reader (ask, runReaderT)
 import Data.ByteString (ByteString)
 import Data.Conduit (Producer, Conduit, Consumer, (=$=), ($=), (=$), await, awaitForever, toProducer, yield)
 import Data.Conduit.TMChan (closeTBMChan, isClosedTBMChan, isEmptyTBMChan, sourceTBMChan, writeTBMChan, newTBMChan)
+import Data.Function ((&))
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
@@ -159,9 +160,8 @@ eventSink lastReceived ircstate = go where
 
     -- Handle the event.
     let event' = decodeUtf8 <$> event
-    ignored <- isIgnored ircstate event'
-    unless ignored . liftIO $ do
-      iconf <- snapshot instanceConfig ircstate
+    iconf <- snapshot instanceConfig ircstate
+    unless (isIgnored iconf event') . liftIO $ do
       forM_ (view handlers iconf) $ \(EventHandler matcher handler) ->
         maybe (pure ())
               (void . forkIO . runIRCAction ircstate . handler (_source event'))
@@ -172,16 +172,11 @@ eventSink lastReceived ircstate = go where
     unless disconnected go)
 
 -- | Check if an event is ignored or not.
-isIgnored :: MonadIO m => IRCState s -> Event Text -> m Bool
-isIgnored ircstate ev = do
-  iconf <- liftIO . readTVarIO . _instanceConfig $ ircstate
-  let ignoreList = _ignore iconf
-
-  return $
-    case _source ev of
-      User      n ->  (n, Nothing) `elem` ignoreList
-      Channel c n -> ((n, Nothing) `elem` ignoreList) || ((n, Just c) `elem` ignoreList)
-      Server  _   -> False
+isIgnored :: InstanceConfig s -> Event Text -> Bool
+isIgnored InstanceConfig {..} Event {..} = _ignore & case _source of
+  User n -> elem (n, Nothing)
+  Channel c n -> any $ \ (ni, mci) -> n == ni && maybe True ((==) c) mci
+  Server _ -> const False
 
 -- |A conduit which logs everything which goes through it.
 logConduit :: MonadIO m => (a -> IO ()) -> Conduit a m a
