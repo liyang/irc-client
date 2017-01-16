@@ -22,7 +22,7 @@ import Control.Monad.Reader.Class (MonadReader, asks)
 import Data.Functor.Contravariant (Contravariant(contramap))
 import Data.Functor.Identity (Identity(..))
 import Data.Monoid (First(..))
-import Data.Profunctor (Choice)
+import Data.Profunctor (Choice (right'), dimap)
 
 
 -------------------------------------------------------------------------------
@@ -79,6 +79,26 @@ over l f = runIdentity . l (Identity . f)
 {-# INLINE preview #-}
 preview :: MonadReader s m => Getting (First a) s a -> m (Maybe a)
 preview l = asks (getFirst . foldMapOf l (First . Just))
+
+-- | Access the 'fst' field of a pair (and possibly change its type).
+{-# INLINE _1 #-}
+_1 :: Lens (a, c) (b, c) a b
+_1 = \ afb (a, c) -> (\ b -> (b, c)) <$> afb a
+
+-- | Access the 'snd' field of a pair (and possibly change its type).
+{-# INLINE _2 #-}
+_2 :: Lens (c, a) (c, b) a b
+_2 = \ afb (c, a) -> (\ b -> (c, b)) <$> afb a
+
+-- | A prism for tweaking the 'Left' half of an 'Either':
+{-# INLINE _Left #-}
+_Left :: Prism (Either a c) (Either b c) a b
+_Left = dimap (either Right (Left . Right)) (either pure $ fmap Left) . right'
+
+-- | A prism for tweaking the 'Right' half of an 'Either':
+{-# INLINE _Right #-}
+_Right :: Prism (Either c a) (Either c b) a b
+_Right = dimap (either (Left . Left) Right) (either pure $ fmap Right) . right'
 
 
 -------------------------------------------------------------------------------
