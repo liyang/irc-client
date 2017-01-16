@@ -46,11 +46,14 @@ type Prism s t a b = forall p f. (Choice p, Applicative f) => p a (f b) -> p s (
 -- | A @<http://hackage.haskell.org/package/lens/docs/Control-Lens-Type.html#t:Simple Simple>@ 'Prism'.
 type Prism' s a = Prism s s a a
 
+-- | See @<http://hackage.haskell.org/package/lens/docs/Control-Lens-Fold.html#t:Fold Control.Lens.Fold.Fold>@.
+type Fold s a = forall f. (Contravariant f, Applicative f) => (a -> f a) -> s -> f s
 
 -------------------------------------------------------------------------------
 -- * Utilities
 
--- | Get the value pointed to by a getter or lens.
+-- | Get the value pointed to by a getter or lens, or the result of folding
+-- over all the monoidal targets of a fold.
 {-# INLINE view #-}
 view :: MonadReader s m => Getting a s a -> m a
 view l = asks (getConst . l Const)
@@ -75,7 +78,7 @@ set l b = runIdentity . l (\_ -> Identity b)
 over :: Lens s t a b -> (a -> b) -> s -> t
 over l f = runIdentity . l (Identity . f)
 
--- | Read a value from a prism.
+-- | Read a value from a prism or a fold.
 {-# INLINE preview #-}
 preview :: MonadReader s m => Getting (First a) s a -> m (Maybe a)
 preview l = asks (getFirst . foldMapOf l (First . Just))
@@ -99,6 +102,11 @@ _Left = dimap (either Right (Left . Right)) (either pure $ fmap Left) . right'
 {-# INLINE _Right #-}
 _Right :: Prism (Either c a) (Either c b) a b
 _Right = dimap (either (Left . Left) Right) (either pure $ fmap Right) . right'
+
+-- | Obtain a fold that can be composed with other optics.
+{-# INLINE filtered #-}
+filtered :: (a -> Bool) -> Fold a a
+filtered p = dimap (\x -> if p x then Right x else Left x) (either pure id) . right'
 
 
 -------------------------------------------------------------------------------
