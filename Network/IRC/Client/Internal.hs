@@ -1,8 +1,6 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 
 -- |
 -- Module      : Network.IRC.Client.Internal
@@ -10,7 +8,7 @@
 -- License     : MIT
 -- Maintainer  : Michael Walker <mike@barrucadu.co.uk>
 -- Stability   : experimental
--- Portability : CPP, LambdaCase, OverloadedStrings, RankNTypes, ScopedTypeVariables
+-- Portability : CPP, OverloadedStrings, RankNTypes
 --
 -- Most of the hairy code. This isn't all internal, due to messy
 -- dependencies, but I've tried to make this as \"internal\" as
@@ -136,12 +134,12 @@ runner = do
   timeoutTId <- liftIO (forkIO timeoutThread)
 
   -- Start the client.
-  (exc :: Maybe SomeException) <- liftIO $ catch
+  exc <- liftIO $ catch
     (_func cconf initialise sink source >> killThread timeoutTId >> pure Nothing)
     (pure . Just)
 
   disconnect
-  _ondisconnect cconf exc
+  _ondisconnect cconf (exc :: Maybe SomeException)
 
 -- | Forget failed decodings.
 forgetful :: Monad m => Conduit (Either a b) m b
@@ -153,7 +151,8 @@ forgetful = awaitForever go where
 -- concurrently.
 eventSink :: MonadIO m => IORef UTCTime -> IRCState s -> Consumer (Event ByteString) m ()
 eventSink lastReceived ircstate = go where
-  go = await >>= maybe (return ()) (\event -> do
+  go = await >>= mapM_ sink
+  sink event = do
     -- Record the current time.
     now <- liftIO getCurrentTime
     liftIO $ writeIORef lastReceived now
@@ -168,8 +167,8 @@ eventSink lastReceived ircstate = go where
               (matcher event')
 
     -- If disconnected, do not loop.
-    disconnected <- liftIO . atomically $ (==Disconnected) <$> getConnectionState ircstate
-    unless disconnected go)
+    cs <- liftIO . atomically $ getConnectionState ircstate
+    unless (cs == Disconnected) go
 
 -- | Check if an event is ignored or not.
 isIgnored :: InstanceConfig s -> Event Text -> Bool
