@@ -1,5 +1,5 @@
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
@@ -28,7 +28,8 @@ import Data.Conduit (Consumer, Producer)
 import Data.Conduit.TMChan (TBMChan)
 import Data.Text (Text)
 import Data.Time.Clock (NominalDiffTime)
-import Network.IRC.Conduit (Event(..), Message, Source)
+import Network.IRC.Client.Internal.Lens
+import Network.IRC.Conduit (Event(..), Message)
 
 
 -------------------------------------------------------------------------------
@@ -132,11 +133,12 @@ data Origin = FromServer | FromClient
 -- * Events
 
 -- | A function which handles an event.
-data EventHandler s where
-  EventHandler
-    :: (Event Text -> Maybe b)
-    -> (Source Text -> b -> IRC s ())
-    -> EventHandler s
+data EventHandler s = forall x. EventHandler
+    (Fold (Event Text) x)
+    -- ^ Fold over the details required by the handler,
+    -- if the event should be handled at all.
+    (x -> IRC s ())
+    -- ^ Actual event handler.
 
 
 -------------------------------------------------------------------------------

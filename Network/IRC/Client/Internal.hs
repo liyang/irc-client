@@ -161,10 +161,9 @@ eventSink lastReceived ircstate = go where
     let event' = decodeUtf8 <$> event
     iconf <- snapshot instanceConfig ircstate
     unless (isIgnored iconf event') . liftIO $ do
-      forM_ (view handlers iconf) $ \(EventHandler matcher handler) ->
-        maybe (pure ())
-              (void . forkIO . runIRCAction ircstate . handler (_source event'))
-              (matcher event')
+      forM_ (view handlers iconf) $ \ (EventHandler matcher handler) -> do
+        forM_ (preview matcher event') $ \ x -> do
+            void . forkIO $ ircstate `runIRCAction` handler x
 
     -- If disconnected, do not loop.
     cs <- liftIO . atomically $ getConnectionState ircstate
