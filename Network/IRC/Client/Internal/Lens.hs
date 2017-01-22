@@ -113,8 +113,8 @@ filtered p = dimap (\x -> if p x then Right x else Left x) (either pure id) . ri
 -- ** STM
 
 -- | Atomically snapshot some shared state.
-snapshot :: MonadIO m => Getting (TVar a) s (TVar a) -> s -> m a
-snapshot l = liftIO . atomically . readTVar . view l
+snapshot :: (MonadIO m, MonadReader s m) => Getting (TVar a) s (TVar a) -> m a
+snapshot l = liftIO . atomically . readTVar . view l =<< ask
 
 -- | Atomically snapshot and modify some shared state.
 snapshotModify :: MonadIO m => Lens' s (TVar a) -> (a -> STM (a, b)) -> s -> m b
